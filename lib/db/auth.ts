@@ -1,16 +1,16 @@
 import {
-  createClient,
-  type SupabaseClient
-} from '@supabase/supabase-js';
+  createBrowserClient
+} from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 let browserClient:
   | SupabaseClient
   | null = null;
 
 /**
- * Browser-context Supabase client that persists the auth session
- * (localStorage). Used by login/register pages and the dashboard.
- * Returns null when Supabase is not configured.
+ * Browser-context Supabase client that keeps auth state in cookies
+ * (via @supabase/ssr), matching the server client so the session is
+ * shared across client and server. Returns null when not configured.
  */
 export function getSupabaseBrowser() {
   if (browserClient) {
@@ -27,15 +27,9 @@ export function getSupabaseBrowser() {
     return null;
   }
 
-  browserClient = createClient(
+  browserClient = createBrowserClient(
     url,
-    key,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true
-      }
-    }
+    key
   );
 
   return browserClient;
