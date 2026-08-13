@@ -237,7 +237,7 @@ export default async function Home() {
           {sorted.map((plan) => (
             <PlanCard
               key={
-                `${plan.provider_name}-${plan.name}-${plan.location}`
+                `${plan.provider_name?.name}-${plan.name}-${plan.location}`
               }
               plan={plan}
             />

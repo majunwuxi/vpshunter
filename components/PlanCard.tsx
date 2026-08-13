@@ -2,7 +2,7 @@ import { VerificationBadge } from '@/components/VerificationBadge';
 import { formatDistanceToNow } from 'date-fns';
 
 export interface PlanRow {
-  provider_name: string | null;
+  provider_name: { name: string } | null;
   name: string;
   location: string | null;
   cpu: number | null;
@@ -26,7 +26,8 @@ export function PlanCard({
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="font-semibold">
-            {plan.provider_name ?? 'Unknown'}
+            {plan.provider_name?.name ??
+              'Unknown'}
           </div>
           <div className="text-sm text-zinc-500">
             {plan.name}
