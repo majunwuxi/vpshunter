@@ -67,24 +67,25 @@ export async function getServerSession(): Promise<
   }
 
   const {
-    data: { session }
-  } = await supabase.auth.getSession();
+    data: { user },
+    error
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (error || !user) {
     return null;
   }
 
   const { data } = await supabase
     .from('profiles')
     .select('role, email')
-    .eq('id', session.user.id)
+    .eq('id', user.id)
     .maybeSingle();
 
   return {
-    userId: session.user.id,
+    userId: user.id,
     email:
       (data?.email as string) ??
-      session.user.email ??
+      user.email ??
       null,
     role:
       (data?.role as UserRole) ??
