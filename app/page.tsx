@@ -1,7 +1,8 @@
-import { getSupabaseAnon } from '@/lib/db/supabase';
+import { redirect } from 'next/navigation';
 import { RULES } from '@/config/rules';
 import { PlanCard, type PlanRow } from '@/components/PlanCard';
 import { formatDistanceToNow } from 'date-fns';
+import { getServerSession, getServerClient } from '@/lib/db/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,19 +20,30 @@ interface MonitorRunRow {
 }
 
 export default async function Home() {
+  const session =
+    await getServerSession();
+
+  if (!session) {
+    redirect('/auth');
+  }
+
+  const supabase =
+    await getServerClient();
+
   let rows: PlanRow[] = [];
   let error: string | null = null;
   let monitorRun: MonitorRunRow | null =
     null;
 
-  const client = getSupabaseAnon();
-
-  if (!client) {
+  if (!supabase) {
     error = 'Supabase not configured';
+  } else if (session.role === 'pending') {
+    error =
+      '你的账号正在等待管理员审批。';
   } else {
     try {
       const { data, error: dbError } =
-        await client
+        await supabase
         .from('plans')
         .select(
           `
@@ -65,7 +77,7 @@ export default async function Home() {
       const {
         data: runData,
         error: runError
-      } = await client
+      } = await supabase
         .from('monitor_runs')
         .select(
           'started_at, finished_at, providers_checked, offers_found, offers_qualified, notifications_sent, status'
@@ -128,17 +140,43 @@ export default async function Home() {
 
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
-      <header className="mb-8">
-        <h1 className="text-2xl font-bold">
-          VPS Hunter
-        </h1>
-        <p className="text-sm text-zinc-500">
-          Reliable low-cost VPS monitoring with
-          checkout verification
-        </p>
+      <header className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">
+            VPS Hunter
+          </h1>
+          <p className="text-sm text-zinc-500">
+            Reliable low-cost VPS monitoring with
+            checkout verification
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-zinc-500">
+            {session.email}
+            {session.role === 'admin' && (
+              <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
+                admin
+              </span>
+            )}
+          </span>
+          {session.role === 'admin' && (
+            <a
+              href="/admin"
+              className="text-zinc-500 hover:underline"
+            >
+              审批
+            </a>
+          )}
+          <a
+            href="/auth?out=1"
+            className="text-zinc-500 hover:underline"
+          >
+            退出
+          </a>
+        </div>
       </header>
 
-      {monitorRun && (
+      {monitorRun && session.role !== 'pending' && (
         <div
           className={`mb-6 rounded border px-4 py-3 text-sm ${
             monitorOffline
@@ -186,8 +224,8 @@ export default async function Home() {
       )}
 
       {error ? (
-        <p className="text-sm text-red-600">
-          Database not reachable: {error}
+        <p className="text-sm text-zinc-500">
+          {error}
         </p>
       ) : sorted.length === 0 ? (
         <p className="text-sm text-zinc-500">
