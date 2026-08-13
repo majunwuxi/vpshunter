@@ -1,0 +1,57 @@
+name: VPS Monitor
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run without sending notifications / writing DB"
+        type: boolean
+        default: true
+
+env:
+  # Set MONITOR_DRY_RUN=false in repository secrets to enable
+  # real notifications from the scheduled run.
+  MONITOR_DRY_RUN: ${{ secrets.MONITOR_DRY_RUN || 'true' }}
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: |
+          npx playwright install chromium --with-deps
+
+      # Manual run: dry_run checkbox (default checked = safe).
+      #   checked  -> DRY_RUN=true  (observe, no notifications)
+      #   unchecked-> DRY_RUN=false (real run)
+      # Scheduled run: DRY_RUN from MONITOR_DRY_RUN secret (default true).
+      - name: Run monitor
+        run: npm run monitor
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+
+          DRY_RUN: ${{ inputs.dry_run == false && 'false' || env.MONITOR_DRY_RUN }}
