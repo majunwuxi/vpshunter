@@ -78,7 +78,9 @@ export async function saveOffer(
           rdns_supported:
             offer.rdnsStatus === 'confirmed'
               ? true
-              : offer.rdnsStatus,
+              : offer.rdnsStatus === 'unsupported'
+                ? false
+                : null,
           rdns_method:
             offer.rdnsMethod ?? null,
           smtp25_policy:

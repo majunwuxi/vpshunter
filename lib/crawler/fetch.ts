@@ -3,10 +3,11 @@ import * as cheerio from 'cheerio';
 const HTTP_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAYS_MS = [2_000, 5_000];
+// 4xx that indicate a permanent problem (no point retrying).
+// 403 is deliberately excluded: Cloudflare challenges / rate limits
+// are often transient and may succeed on a later attempt.
 const NO_RETRY_STATUS = new Set([
   400,
-  401,
-  403,
   404,
   410
 ]);
@@ -45,17 +46,17 @@ export async function fetchHtml(
       clearTimeout(timer);
 
       if (!response.ok) {
+        const err = new Error(
+          `HTTP ${response.status} ${url}`
+        );
+
         if (
           NO_RETRY_STATUS.has(response.status)
         ) {
-          throw new Error(
-            `HTTP ${response.status} ${url}`
-          );
+          throw err;
         }
 
-        throw new Error(
-          `HTTP ${response.status} ${url}`
-        );
+        throw err;
       }
 
       return await response.text();
@@ -65,26 +66,31 @@ export async function fetchHtml(
           ? error
           : new Error(String(error));
 
-      if (
-        error instanceof Error &&
-        /HTTP 4/.test(error.message)
-      ) {
-        throw error;
-      }
-
-      if (
-        attempt < MAX_RETRIES
-      ) {
-        const delay =
-          RETRY_DELAYS_MS[attempt] ?? 2_000;
-
-        await new Promise(
-          (resolve) =>
-            setTimeout(resolve, delay)
+      const statusMatch =
+        lastError.message.match(
+          /HTTP (\d{3})/
         );
 
-        continue;
+      const isNoRetry =
+        statusMatch &&
+        NO_RETRY_STATUS.has(
+          Number(statusMatch[1])
+        );
+
+      if (
+        isNoRetry ||
+        attempt >= MAX_RETRIES
+      ) {
+        throw lastError;
       }
+
+      const delay =
+        RETRY_DELAYS_MS[attempt] ?? 2_000;
+
+      await new Promise(
+        (resolve) =>
+          setTimeout(resolve, delay)
+      );
     }
   }
 
