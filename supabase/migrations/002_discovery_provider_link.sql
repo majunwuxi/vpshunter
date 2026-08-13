@@ -8,8 +8,3 @@ alter table discovery_items
 
 create index discovery_items_provider_idx
   on discovery_items(provider_id);
-
-create policy "public read discovery_items" 
-  on discovery_items
-  for select
-  using (true);
