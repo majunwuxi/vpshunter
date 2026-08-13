@@ -109,10 +109,20 @@ export async function sendAlert(
     return;
   }
 
+  if (
+    !process.env.RESEND_FROM_EMAIL
+  ) {
+    console.warn(
+      'RESEND_FROM_EMAIL missing, notification skipped'
+    );
+
+    return;
+  }
+
   const { error } =
     await getResend().emails.send({
       from:
-        'VPS Hunter <alert@yourdomain.com>',
+        process.env.RESEND_FROM_EMAIL,
       to: [
         process.env.ALERT_EMAIL
       ],

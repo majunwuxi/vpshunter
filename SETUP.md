@@ -29,8 +29,8 @@
 1. 注册 [resend.com](https://resend.com)。
 2. 添加发送域名（如 `alert.yourdomain.com`），验证 **SPF + DKIM**（§64）。
 3. 创建 **Sending-only** 的 API Key → `RESEND_API_KEY`。
-4. 修改 `lib/notifications/email.ts` 里的发件人 `from` 地址为你的域名。
-5. `ALERT_EMAIL` = 接收通知的邮箱。
+4. `ALERT_EMAIL` = 接收通知的邮箱。
+5. `RESEND_FROM_EMAIL` = 发件人，格式 `VPS Hunter <alert@yourdomain.com>`（必须用已验证域名）。
 
 ## 4. GitHub Secrets
 
