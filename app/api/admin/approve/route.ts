@@ -54,6 +54,31 @@ export async function POST(
   }
 
   if (action === 'approve') {
+    // Only approve users currently in pending state.
+    const { data: target, error: findErr } =
+      await admin
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (findErr) {
+      return Response.json(
+        { error: findErr.message },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !target ||
+      target.role !== 'pending'
+    ) {
+      return Response.json(
+        { error: 'User not pending' },
+        { status: 400 }
+      );
+    }
+
     const { error } = await admin
       .from('profiles')
       .update({
@@ -76,9 +101,39 @@ export async function POST(
   }
 
   if (action === 'reject') {
-    // Delete the profile and the auth user (service role can do this).
+    // Only reject users currently in pending state.
+    const { data: target, error: findErr } =
+      await admin
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (findErr) {
+      return Response.json(
+        { error: findErr.message },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !target ||
+      target.role !== 'pending'
+    ) {
+      return Response.json(
+        { error: 'User not pending' },
+        { status: 400 }
+      );
+    }
+
+    // Delete the profile row (service role bypasses RLS) and the auth user.
+    await admin
+      .from('profiles')
+      .delete()
+      .eq('id', userId);
+
     const { error } = await admin
-      .auth.admin.deleteUser(userId);
+      .auth.admin.deleteUser(userId, true);
 
     if (error) {
       return Response.json(

@@ -15,32 +15,36 @@ create table profiles (
 
 -- Auto-create a profile on signup. The very first user becomes admin;
 -- everyone after starts as pending (requires admin approval).
-create or replace function handle_new_user()
+create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
+set search_path = public, auth
 as $$
+declare
+  _email text := coalesce(new.raw_user_meta_data->>'email', new.email, '');
+  _is_first boolean;
 begin
-  insert into profiles (id, email, role, approved_at)
+  select not exists (select 1 from public.profiles)
+    into _is_first;
+
+  insert into public.profiles (id, email, role, approved_at)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'email', new.email, ''),
-    case
-      when not exists (select 1 from profiles) then 'admin'
-      else 'pending'
-    end,
-    case
-      when not exists (select 1 from profiles) then now()
-      else null
-    end
+    _email,
+    case when _is_first then 'admin' else 'pending' end,
+    case when _is_first then now() else null end
   );
+
   return new;
 end;
 $$;
 
+drop trigger if exists on_auth_user_created on auth.users;
+
 create trigger on_auth_user_created
   after insert on auth.users
-  for each row execute function handle_new_user();
+  for each row execute function public.handle_new_user();
 
 -- ============ RLS ============
 alter table profiles enable row level security;
