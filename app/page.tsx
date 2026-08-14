@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { getServerSession, getServerClient } from '@/lib/db/server';
 import { loadRules } from '@/lib/rules/rules-store';
 import { planMatchesRules } from '@/lib/rules/filter';
+import { AdapterProgress } from '@/components/AdapterProgress';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,14 @@ interface MonitorRunRow {
   offers_qualified: number | null;
   notifications_sent: number | null;
   status: string | null;
+}
+
+interface AdapterProgressRow {
+  slug: string;
+  name: string;
+  status: string;
+  progress: number;
+  note: string | null;
 }
 
 export default async function Home({
@@ -44,6 +53,7 @@ export default async function Home({
     null;
   let hiddenCount = 0;
   let regionOrder: string[] = [];
+  let adapterProgress: AdapterProgressRow[] = [];
   let providerAgg = new Map<
     string,
     { total: number; qualified: number }
@@ -142,6 +152,16 @@ export default async function Home({
 
         return matches;
       });
+
+      const { data: progressData } =
+        await supabase
+          .from('provider_adapter_progress')
+          .select('slug, name, status, progress, note')
+          .order('progress', { ascending: false })
+          .order('name', { ascending: true });
+
+      adapterProgress =
+        (progressData as unknown as AdapterProgressRow[]) ?? [];
 
       const {
         data: runData,
@@ -366,6 +386,10 @@ export default async function Home({
             </>
           )}
         </div>
+      )}
+
+      {session.role !== 'pending' && !error && (
+        <AdapterProgress items={adapterProgress} />
       )}
 
       {session.role !== 'pending' &&
