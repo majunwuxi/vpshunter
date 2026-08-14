@@ -15,6 +15,14 @@ interface DiscoveryRow {
   created_at: string;
 }
 
+interface AutoProviderRow {
+  slug: string;
+  name: string;
+  base_url: string;
+  enabled: boolean;
+  first_seen_at: string;
+}
+
 export default async function CandidatesPage() {
   const session =
     await getServerSession();
@@ -45,19 +53,40 @@ export default async function CandidatesPage() {
       })
       .limit(50);
 
+  const { data: autoData } =
+    await supabase
+      .from('auto_providers')
+      .select(
+        'slug, name, base_url, enabled, first_seen_at'
+      )
+      .eq('enabled', true)
+      .order('name');
+
   const items =
     (data as unknown as DiscoveryRow[]) ??
     [];
+
+  const autoProviders =
+    (autoData as unknown as AutoProviderRow[]) ??
+    [];
+
+  const pendingItems = items.filter(
+    (item) => !item.processed
+  );
+
+  const linkedItems = items.filter(
+    (item) => item.processed
+  );
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-6">
       <header className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">
-            待核验候选
+            供应商发现与监控状态
           </h1>
           <p className="text-sm text-zinc-500">
-            来自论坛线索、官网可核验的供应商（尚未加入监控）
+            自动发现的供应商会先检查 WHMCS 兼容性，再加入监控。
           </p>
         </div>
         <div className="flex items-center gap-3 text-sm">
@@ -84,13 +113,59 @@ export default async function CandidatesPage() {
         </p>
       )}
 
-      {items.length === 0 ? (
-        <p className="text-sm text-zinc-500">
-          暂无待核验候选。
-        </p>
-      ) : (
+      <section className="mb-8">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">
+            已自动加入监控（{autoProviders.length}）
+          </h2>
+          <span className="text-xs text-zinc-400">
+            标准 WHMCS 商品页
+          </span>
+        </div>
+        {autoProviders.length === 0 ? (
+          <p className="rounded border border-zinc-200 p-4 text-sm text-zinc-500">
+            当前没有自动加入的供应商。下一次论坛扫描发现可解析的 WHMCS VPS 商品页后会自动加入。
+          </p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {autoProviders.map((provider) => (
+              <li
+                key={provider.slug}
+                className="rounded border border-green-200 bg-green-50 p-3"
+              >
+                <div className="font-medium text-green-900">
+                  {provider.name}
+                </div>
+                <a
+                  href={provider.base_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-green-700 hover:underline"
+                >
+                  {provider.base_url} ↗
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">
+            发现但尚未加入（{pendingItems.length}）
+          </h2>
+          <span className="text-xs text-zinc-400">
+            非 WHMCS / Cloudflare / 自定义页面需专用 Adapter
+          </span>
+        </div>
+        {pendingItems.length === 0 ? (
+          <p className="rounded border border-zinc-200 p-4 text-sm text-zinc-500">
+            暂无尚未加入的线索。
+          </p>
+        ) : (
         <ul className="flex flex-col gap-3">
-          {items.map((item) => (
+          {pendingItems.map((item) => (
             <li
               key={item.source_url}
               className="rounded border border-zinc-200 p-4"
@@ -111,15 +186,9 @@ export default async function CandidatesPage() {
                       · {item.source}
                     </span>
                     <span className="ml-2">
-                      {item.processed ? (
-                        <span className="text-green-600">
-                          已关联
-                        </span>
-                      ) : (
-                        <span className="text-amber-600">
-                          待核验
-                        </span>
-                      )}
+                      <span className="text-amber-600">
+                        尚未自动加入
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -154,6 +223,13 @@ export default async function CandidatesPage() {
             </li>
           ))}
         </ul>
+        )}
+      </section>
+
+      {linkedItems.length > 0 && (
+        <p className="mt-6 text-xs text-zinc-400">
+          另有 {linkedItems.length} 条线索已关联现有固定 Adapter。
+        </p>
       )}
     </main>
   );
