@@ -17,6 +17,7 @@ export interface MonitorRunResult {
   offersFound: number;
   offersQualified: number;
   notificationsSent: number;
+  providerStats: Record<string, unknown>;
 }
 
 export async function startMonitorRun() {
@@ -56,6 +57,8 @@ export async function finishMonitorRun(
           result.offersQualified,
         notifications_sent:
           result.notificationsSent,
+        provider_stats:
+          result.providerStats,
         status: 'success'
       })
       .eq('id', runId);

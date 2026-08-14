@@ -64,6 +64,15 @@ const runStats = {
 let activeRules: MonitorRules | null =
   null;
 
+type ProviderStat = {
+  status: 'success' | 'failed';
+  offers: number;
+  verification: { A: number; B: number; C: number };
+  checkout: 'passed' | 'failed' | 'not_attempted';
+  cloudflare: 'passed' | 'failed' | 'not_applicable';
+  error?: string;
+};
+
 async function processOffer(
   offerInput: RawVpsOffer
 ) {
@@ -352,6 +361,7 @@ async function main() {
   }
 
   let providersChecked = 0;
+  const providerStats: Record<string, ProviderStat> = {};
 
   try {
     // Discovery phase: collect leads from forums (never notified directly).
@@ -511,6 +521,13 @@ async function main() {
     for (
       const monitor of allMonitors
     ) {
+      const stats: ProviderStat = providerStats[monitor.slug] = {
+        status: 'success',
+        offers: 0,
+        verification: { A: 0, B: 0, C: 0 },
+        checkout: 'not_attempted',
+        cloudflare: monitor.slug === 'racknerd' ? 'failed' : 'not_applicable'
+      };
       try {
         const urls =
           await monitor.discover();
@@ -522,6 +539,14 @@ async function main() {
           for (
             const offer of offers
           ) {
+            stats.offers += 1;
+            stats.verification[offer.verificationLevel] += 1;
+            if (offer.verificationLevel === 'A') {
+              stats.checkout = 'passed';
+              if (monitor.slug === 'racknerd') stats.cloudflare = 'passed';
+            } else if (stats.checkout === 'not_attempted') {
+              stats.checkout = 'failed';
+            }
             await processOffer(
               offer
             );
@@ -529,7 +554,10 @@ async function main() {
         }
 
         providersChecked += 1;
+        logger.info({ provider: monitor.slug, ...stats }, 'provider monitor summary');
       } catch (error) {
+        stats.status = 'failed';
+        stats.error = error instanceof Error ? error.message : String(error);
         logger.error(
           {
             monitor: monitor.slug,
@@ -546,6 +574,7 @@ async function main() {
     if (runId) {
       await finishMonitorRun(runId, {
         providersChecked,
+        providerStats,
         ...runStats
       });
     }
@@ -554,6 +583,7 @@ async function main() {
       {
         ...runStats,
         providersChecked,
+        providerStats,
         durationMs:
           Date.now() -
           started.getTime()

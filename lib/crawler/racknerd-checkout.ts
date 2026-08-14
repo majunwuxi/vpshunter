@@ -10,6 +10,7 @@ export interface RackNerdCycle {
 
 export interface RackNerdConf {
   reached: boolean;
+  cloudflare: 'passed' | 'failed';
   cycles: RackNerdCycle[];
   locationOptions: string[];
   configText: string;
@@ -65,6 +66,7 @@ export async function verifyRackNerdCheckout(
       await browser.close();
       return {
         reached: false,
+        cloudflare: 'passed',
         cycles: [],
         locationOptions: [],
         configText: '',
@@ -140,6 +142,7 @@ export async function verifyRackNerdCheckout(
 
     return {
       reached: true,
+      cloudflare: 'passed',
       cycles,
       locationOptions,
       configText
@@ -162,6 +165,9 @@ export async function verifyRackNerdCheckout(
 
     return {
       reached: false,
+      cloudflare: /403|challenge|turnstile|cloudflare/i.test(
+        error instanceof Error ? error.message : String(error)
+      ) ? 'failed' : 'failed',
       cycles: [],
       locationOptions: [],
       configText: '',
