@@ -40,6 +40,17 @@ export interface WhmcsProviderConfig {
    */
   matchCountry(text: string): string | null;
 
+  /**
+   * When a plan has no fixed location but the checkout offers a Location
+   * selector, this maps a single location option label (e.g. "Tokyo" or
+   * "DC1(Tokyo, JP)") to a country/city pair. Return null when the option
+   * is not a target region. Only options that map to a target region are
+   * emitted as separate offers.
+   */
+  matchLocationOption?(
+    label: string
+  ): { countryCode: string; city: string } | null;
+
   /** Map a country code + config text to a city label. */
   resolveCity(text: string, countryCode: string): string;
 
@@ -62,6 +73,12 @@ export interface WhmcsProviderConfig {
    * Playwright must be available; otherwise it degrades to level B.
    */
   enableCheckoutUpgrade?: boolean;
+
+  /**
+   * Optional User-Agent for fetching list pages. Some hosts (Cloudflare
+   * fronted) block the default VPS-Hunter UA and require a browser UA.
+   */
+  userAgent?: string;
 }
 
 export interface PackageCard {
@@ -322,7 +339,10 @@ export function createWhmcsProvider(
       url: string
     ): Promise<RawVpsOffer[]> {
       const html =
-        await fetchHtml(url);
+        await fetchHtml(
+          url,
+          config.userAgent
+        );
 
       const cards =
 
@@ -400,6 +420,9 @@ export function createWhmcsProvider(
 
         let confReached =
           false;
+
+        let locationOptions: string[] =
+          [];
 
         let checkoutVerified =
           false;
@@ -523,8 +546,11 @@ export function createWhmcsProvider(
             // locationOptions are ALL selectable datacenter locations,
             // not the plan's fixed location. They must NOT be treated as
             // the plan's country (would cause false positives). They serve
-            // only as evidence that a target location is selectable (level A).
-            void conf.locationOptions;
+            // only as evidence that a target location is selectable, and are
+            // used to emit one offer per target region when the plan has no
+            // fixed location.
+            locationOptions =
+              conf.locationOptions;
 
             const annual =
               findAnnualCycle(
@@ -625,16 +651,11 @@ export function createWhmcsProvider(
           detectStorageType(configText);
         const ipv4 =
           detectDedicatedIpv4(configText);
-        const country =
-          config.matchCountry(
-            configText
-          );
 
         if (
           !cpu ||
           !ramMb ||
-          !storageGb ||
-          !country
+          !storageGb
         ) {
           logger.info(
             {
@@ -642,8 +663,7 @@ export function createWhmcsProvider(
               plan: card.name,
               cpu,
               ramMb,
-              storageGb,
-              country
+              storageGb
             },
             'plan info incomplete'
           );
@@ -654,14 +674,9 @@ export function createWhmcsProvider(
         const qty =
           parseQty(card.qtyText);
 
-        offers.push({
+        const base = {
           provider: config.name,
           planName: card.name,
-          countryCode: country,
-          city: config.resolveCity(
-            configText,
-            country
-          ),
           cpu,
           ramMb,
           storageGb,
@@ -669,7 +684,7 @@ export function createWhmcsProvider(
           ipv4Count: ipv4.count,
           dedicatedIpv4:
             ipv4.dedicated,
-          rdnsStatus: 'unknown',
+          rdnsStatus: 'unknown' as const,
           smtp25Policy:
             parseSmtp25(configText),
           currency: 'USD',
@@ -683,13 +698,80 @@ export function createWhmcsProvider(
             card.orderUrl,
           verificationLevel:
             checkoutVerified
-              ? 'A'
+              ? 'A' as const
               : confReached
-                ? 'B'
-                : 'C',
+                ? 'B' as const
+                : 'C' as const,
           verifiedAt:
             new Date()
-        });
+        };
+
+        // Determine target locations: a fixed location from the plan text,
+        // or (for multi-location plans) one offer per target region option.
+        const fixedCountry =
+          config.matchCountry(
+            configText
+          );
+
+        let targets: Array<{
+          countryCode: string;
+          city: string;
+        }>;
+
+        if (fixedCountry) {
+          targets = [
+            {
+              countryCode:
+                fixedCountry,
+              city:
+                config.resolveCity(
+                  configText,
+                  fixedCountry
+                )
+            }
+          ];
+        } else if (
+          config.matchLocationOption
+        ) {
+          targets = locationOptions
+            .map((label) =>
+              config.matchLocationOption!(
+                label
+              )
+            )
+            .filter(
+              (
+                t
+              ): t is {
+                countryCode: string;
+                city: string;
+              } => t !== null
+            );
+        } else {
+          targets = [];
+        }
+
+        if (targets.length === 0) {
+          logger.info(
+            {
+              provider: config.slug,
+              plan: card.name,
+              fixedCountry
+            },
+            'no target location'
+          );
+
+          continue;
+        }
+
+        for (const target of targets) {
+          offers.push({
+            ...base,
+            countryCode:
+              target.countryCode,
+            city: target.city
+          });
+        }
       }
 
       return offers;

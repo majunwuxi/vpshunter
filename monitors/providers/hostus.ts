@@ -15,6 +15,9 @@ const hostusConfig = {
 
   locationConfigOptionIds: ['61'],
 
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+
   matchCountry(
     text: string
   ): string | null {
@@ -56,6 +59,48 @@ const hostusConfig = {
       )
     ) {
       return 'DE';
+    }
+
+    return null;
+  },
+
+  /**
+   * Maps a Location selector option (from checkout) to a target region.
+   * Only target regions (JP/KR/HK/SG) are emitted as offers; other options
+   * are ignored so the dashboard only shows regions we care about.
+   */
+  matchLocationOption(
+    label: string
+  ): {
+    countryCode: string;
+    city: string;
+  } | null {
+    if (/Tokyo|Japan/i.test(label)) {
+      return {
+        countryCode: 'JP',
+        city: 'Tokyo'
+      };
+    }
+
+    if (/Seoul|Korea/i.test(label)) {
+      return {
+        countryCode: 'KR',
+        city: 'Seoul'
+      };
+    }
+
+    if (/Singapore/i.test(label)) {
+      return {
+        countryCode: 'SG',
+        city: 'Singapore'
+      };
+    }
+
+    if (/Hong ?Kong/i.test(label)) {
+      return {
+        countryCode: 'HK',
+        city: 'Hong Kong'
+      };
     }
 
     return null;

@@ -12,7 +12,7 @@ export function parseCpu(
 ): number | null {
   const match =
     text.match(
-      /(\d+)\s*(?:Core|Core\(s\)|vCore|vCPU|vCPU\(s\)|Cores)/i
+      /(\d+)\s*x?\s*(?:Core|Core\(s\)|vCore|vCPU|vCPU\(s\)|Cores)/i
     );
 
   if (!match) return null;

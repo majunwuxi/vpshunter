@@ -13,7 +13,8 @@ const NO_RETRY_STATUS = new Set([
 ]);
 
 export async function fetchHtml(
-  url: string
+  url: string,
+  userAgent?: string
 ): Promise<string> {
   let lastError: Error | undefined;
 
@@ -36,6 +37,7 @@ export async function fetchHtml(
         {
           headers: {
             'User-Agent':
+              userAgent ??
               process.env.MONITOR_USER_AGENT ??
               'VPS-Hunter/1.0'
           },
