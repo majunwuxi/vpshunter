@@ -1,13 +1,11 @@
 import { redirect } from 'next/navigation';
-import { RULES } from '@/config/rules';
 import { PlanCard, type PlanRow } from '@/components/PlanCard';
 import { formatDistanceToNow } from 'date-fns';
 import { getServerSession, getServerClient } from '@/lib/db/server';
+import { loadRules } from '@/lib/rules/rules-store';
+import { planMatchesRules } from '@/lib/rules/filter';
 
 export const dynamic = 'force-dynamic';
-
-const REGION_ORDER: readonly string[] =
-  RULES.preferredRegions;
 
 interface MonitorRunRow {
   started_at: string;
@@ -34,6 +32,8 @@ export default async function Home() {
   let error: string | null = null;
   let monitorRun: MonitorRunRow | null =
     null;
+  let hiddenCount = 0;
+  let regionOrder: string[] = [];
 
   if (!supabase) {
     error = 'Supabase not configured';
@@ -42,6 +42,12 @@ export default async function Home() {
       '你的账号正在等待管理员审批。';
   } else {
     try {
+      const rules =
+        await loadRules(supabase);
+
+      regionOrder =
+        rules.preferredRegions;
+
       const { data, error: dbError } =
         await supabase
         .from('plans')
@@ -55,10 +61,12 @@ export default async function Home() {
             storage_gb,
             storage_type,
             ipv4_count,
+            dedicated_ipv4,
             price_usd_year,
             rdns_supported,
             verification_level,
-            last_verified_at
+            last_verified_at,
+            available
           `
         )
         .eq('available', true)
@@ -70,9 +78,24 @@ export default async function Home() {
         throw dbError;
       }
 
-      rows =
+      const all =
         (data as unknown as PlanRow[]) ??
         [];
+
+      // Only show plans that match the active rules; hide the rest.
+      rows = all.filter((plan) => {
+        const { matches } =
+          planMatchesRules(
+            plan as unknown as import('@/lib/rules/filter').PlanFilterRow,
+            rules
+          );
+
+        if (!matches) {
+          hiddenCount += 1;
+        }
+
+        return matches;
+      });
 
       const {
         data: runData,
@@ -117,10 +140,10 @@ export default async function Home() {
       '';
 
     const index =
-      REGION_ORDER.indexOf(code);
+      regionOrder.indexOf(code);
 
     return index === -1
-      ? REGION_ORDER.length
+      ? regionOrder.length
       : index;
   };
 
@@ -228,20 +251,34 @@ export default async function Home() {
           {error}
         </p>
       ) : sorted.length === 0 ? (
-        <p className="text-sm text-zinc-500">
-          No available plans yet. The monitor
-          has not written any results.
-        </p>
+        <div>
+          <p className="text-sm text-zinc-500">
+            当前没有符合规则的套餐。
+          </p>
+          {hiddenCount > 0 && (
+            <p className="mt-1 text-xs text-zinc-400">
+              已屏蔽 {hiddenCount} 个不符合条件的套餐
+            </p>
+          )}
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sorted.map((plan) => (
-            <PlanCard
-              key={
-                `${plan.provider_name?.name}-${plan.name}-${plan.location}`
-              }
-              plan={plan}
-            />
-          ))}
+        <div>
+          {hiddenCount > 0 && (
+            <p className="mb-3 text-xs text-zinc-400">
+              已屏蔽 {hiddenCount} 个不符合条件的套餐，仅显示符合规则的
+              {sorted.length} 个
+            </p>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {sorted.map((plan) => (
+              <PlanCard
+                key={
+                  `${plan.provider_name?.name}-${plan.name}-${plan.location}`
+                }
+                plan={plan}
+              />
+            ))}
+          </div>
         </div>
       )}
     </main>

@@ -68,6 +68,12 @@ export default async function AdminPage() {
         >
           ← 返回
         </Link>
+        <Link
+          href="/admin/settings"
+          className="ml-4 text-sm text-zinc-500 hover:underline"
+        >
+          监测规则设置
+        </Link>
       </header>
 
       {error && (

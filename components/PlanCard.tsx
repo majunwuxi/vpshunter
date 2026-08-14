@@ -10,10 +10,12 @@ export interface PlanRow {
   storage_gb: number | null;
   storage_type: string | null;
   ipv4_count: number | null;
+  dedicated_ipv4: boolean | null;
   price_usd_year: number | null;
   rdns_supported: boolean | null;
   verification_level: string | null;
   last_verified_at: string | null;
+  available: boolean | null;
 }
 
 export function PlanCard({

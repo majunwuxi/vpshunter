@@ -1,49 +1,79 @@
-import { RULES } from '@/config/rules';
 import type {
   Evaluation,
   VpsOffer
 } from '@/monitors/types';
+import {
+  defaultRules,
+  type MonitorRules
+} from '@/lib/rules/types';
 
-const ALLOWED_TYPES = RULES.allowedStorageTypes.map(
-  (type) => type.toUpperCase()
-);
+const STATIC_ALLOWED_TYPES = [
+  'SSD',
+  'NVME',
+  'NVME SSD',
+  'ENTERPRISE SSD'
+].map((type) => type.toUpperCase());
 
 export function evaluateOffer(
-  offer: VpsOffer
+  offer: VpsOffer,
+  rules?: MonitorRules
 ): Evaluation {
+  const active =
+    rules ?? defaultRules();
+
   const reasons: string[] = [];
 
-  if (offer.cpu < RULES.hardware.minVcpu) {
+  if (
+    offer.cpu <
+    active.hardware.minVcpu
+  ) {
     reasons.push('CPU below minimum');
   }
 
-  if (offer.ramMb < RULES.hardware.minRamMb) {
+  if (
+    offer.ramMb <
+    active.hardware.minRamMb
+  ) {
     reasons.push('RAM below minimum');
   }
 
   if (
     offer.storageGb <
-    RULES.hardware.minStorageGb
+    active.hardware.minStorageGb
   ) {
-    reasons.push('Storage below minimum');
+    reasons.push(
+      'Storage below minimum'
+    );
   }
 
-  if (!offer.dedicatedIpv4) {
-    reasons.push('No dedicated IPv4');
+  if (
+    active.hardware.requireDedicatedIpv4 &&
+    !offer.dedicatedIpv4
+  ) {
+    reasons.push(
+      'No dedicated IPv4'
+    );
   }
 
   if (offer.ipv4Count < 1) {
-    reasons.push('IPv4 count below minimum');
+    reasons.push(
+      'IPv4 count below minimum'
+    );
   }
 
-  const type = offer.storageType.toUpperCase();
+  const type =
+    offer.storageType.toUpperCase();
 
   const solidState =
-    ALLOWED_TYPES.some((allowed) =>
-      type.includes(allowed)
+    STATIC_ALLOWED_TYPES.some(
+      (allowed) =>
+        type.includes(allowed)
     );
 
-  if (!solidState) {
+  if (
+    active.hardware.requireSolidState &&
+    !solidState
+  ) {
     reasons.push(
       'Storage is not SSD/NVMe'
     );
@@ -53,7 +83,9 @@ export function evaluateOffer(
     reasons.push('Out of stock');
   }
 
-  if (offer.verificationLevel !== 'A') {
+  if (
+    offer.verificationLevel !== 'A'
+  ) {
     reasons.push(
       'Checkout not fully verified'
     );
@@ -67,11 +99,12 @@ export function evaluateOffer(
   }
 
   const maxStandard =
-    RULES.pricing.standardMaxUsdYear;
+    active.pricing.standardMaxUsdYear;
 
   if (
     offer.priceUsdYear >=
-      maxStandard - RULES.priceBufferUsd &&
+      maxStandard -
+        active.priceBufferUsd &&
     offer.priceUsdYear < maxStandard
   ) {
     reasons.push(
@@ -92,7 +125,7 @@ export function evaluateOffer(
   if (
     offer.rdnsStatus === 'confirmed' &&
     offer.priceUsdYear <
-      RULES.pricing.rdnsMaxUsdYear
+      active.pricing.rdnsMaxUsdYear
   ) {
     return {
       qualified: true,
@@ -106,6 +139,10 @@ export function evaluateOffer(
     reasons:
       reasons.length > 0
         ? reasons
-        : ['Price exceeds allowed tier']
+        : [
+            'Price exceeds allowed tier'
+          ]
   };
 }
+
+export { defaultRules };

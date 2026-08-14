@@ -1,9 +1,12 @@
 import { bytevirtMonitor } from '@/monitors/providers/bytevirt';
 import { evaluateOffer } from '@/lib/rules/evaluate';
+import { loadRules } from '@/lib/rules/rules-store';
 import { normalizeOffer } from '@/lib/rules/normalize';
 import { getExchangeRate } from '@/lib/utils/currency';
 
 async function main() {
+  const rules = await loadRules();
+
   const urls =
     await bytevirtMonitor.discover();
 
@@ -32,7 +35,8 @@ async function main() {
 
       const result =
         evaluateOffer(
-          normalized
+          normalized,
+          rules
         );
 
       console.log(

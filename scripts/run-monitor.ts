@@ -15,6 +15,8 @@ import {
 import {
   evaluateOffer
 } from '@/lib/rules/evaluate';
+import { loadRules } from '@/lib/rules/rules-store';
+import type { MonitorRules } from '@/lib/rules/types';
 import { normalizeOffer } from '@/lib/rules/normalize';
 import { getExchangeRate } from '@/lib/utils/currency';
 import {
@@ -54,6 +56,9 @@ const runStats = {
   notificationsSent: 0
 };
 
+let activeRules: MonitorRules | null =
+  null;
+
 async function processOffer(
   offerInput: RawVpsOffer
 ) {
@@ -71,7 +76,10 @@ async function processOffer(
     );
 
   const result =
-    evaluateOffer(offer);
+    evaluateOffer(
+      offer,
+      activeRules ?? undefined
+    );
 
   let planId: string | null = null;
 
@@ -200,6 +208,24 @@ async function main() {
 
   logger.info(
     'VPS Hunter monitor started'
+  );
+
+  activeRules = await loadRules();
+
+  logger.info(
+    {
+      minVcpu:
+        activeRules.hardware.minVcpu,
+      minRamMb:
+        activeRules.hardware.minRamMb,
+      minStorageGb:
+        activeRules.hardware.minStorageGb,
+      standardMaxUsdYear:
+        activeRules.pricing.standardMaxUsdYear,
+      rdnsMaxUsdYear:
+        activeRules.pricing.rdnsMaxUsdYear
+    },
+    'active rules loaded'
   );
 
   let runId: string | null = null;
