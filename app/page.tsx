@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { PlanCard, type PlanRow } from '@/components/PlanCard';
+import { Sidebar, type ProviderSidebarItem } from '@/components/Sidebar';
 import { formatDistanceToNow } from 'date-fns';
 import { getServerSession, getServerClient } from '@/lib/db/server';
 import { loadRules } from '@/lib/rules/rules-store';
@@ -17,7 +18,16 @@ interface MonitorRunRow {
   status: string | null;
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams
+}: {
+  searchParams: Promise<{
+    provider?: string;
+  }>;
+}) {
+  const { provider } =
+    await searchParams;
+
   const session =
     await getServerSession();
 
@@ -34,6 +44,10 @@ export default async function Home() {
     null;
   let hiddenCount = 0;
   let regionOrder: string[] = [];
+  let providerAgg = new Map<
+    string,
+    { total: number; qualified: number }
+  >();
 
   if (!supabase) {
     error = 'Supabase not configured';
@@ -81,6 +95,38 @@ export default async function Home() {
       const all =
         (data as unknown as PlanRow[]) ??
         [];
+
+      // Aggregate per-provider: total plans, qualified, hidden.
+      providerAgg = new Map<
+        string,
+        { total: number; qualified: number }
+      >();
+
+      for (const plan of all) {
+        const name =
+          plan.provider_name?.name ??
+          'Unknown';
+
+        const agg =
+          providerAgg.get(name) ?? {
+            total: 0,
+            qualified: 0
+          };
+
+        agg.total += 1;
+
+        const { matches } =
+          planMatchesRules(
+            plan as unknown as import('@/lib/rules/filter').PlanFilterRow,
+            rules
+          );
+
+        if (matches) {
+          agg.qualified += 1;
+        }
+
+        providerAgg.set(name, agg);
+      }
 
       // Only show plans that match the active rules; hide the rest.
       rows = all.filter((plan) => {
@@ -161,12 +207,38 @@ export default async function Home() {
     }
   );
 
+  // Sidebar provider list: total plans per provider + hidden count.
+  const sidebarProviders: ProviderSidebarItem[] =
+    [...providerAgg.entries()]
+      .map(([name, agg]) => ({
+        name,
+        planCount: agg.total,
+        hiddenCount:
+          agg.total - agg.qualified
+      }))
+      .sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+
+  // Apply the sidebar provider filter.
+  const activeProvider =
+    provider ??
+    null;
+
+  const visibleRows = activeProvider
+    ? sorted.filter(
+        (p) =>
+          p.provider_name?.name ===
+          activeProvider
+      )
+    : sorted;
+
   const providerCounts = new Map<
     string,
     number
   >();
 
-  for (const plan of sorted) {
+  for (const plan of visibleRows) {
     const name =
       plan.provider_name?.name ??
       'Unknown';
@@ -183,7 +255,7 @@ export default async function Home() {
     number
   >();
 
-  for (const plan of sorted) {
+  for (const plan of visibleRows) {
     const code =
       plan.location?.slice(0, 2).toUpperCase() ??
       '??';
@@ -195,8 +267,8 @@ export default async function Home() {
   }
 
   const cheapest =
-    sorted.length > 0
-      ? sorted.reduce((min, p) =>
+    visibleRows.length > 0
+      ? visibleRows.reduce((min, p) =>
           (p.price_usd_year ?? 0) <
           (min.price_usd_year ?? 0)
             ? p
@@ -205,7 +277,14 @@ export default async function Home() {
       : null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+    <div className="flex flex-1">
+      <Sidebar
+        providers={sidebarProviders}
+        totalPlans={rows.length}
+        totalHidden={hiddenCount}
+        activeProvider={activeProvider}
+      />
+      <main className="min-w-0 flex-1 px-6 py-6">
       <header className="mb-8 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">
@@ -294,7 +373,7 @@ export default async function Home() {
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded border border-zinc-200 p-4">
               <div className="text-2xl font-bold">
-                {sorted.length}
+                {visibleRows.length}
               </div>
               <div className="text-xs text-zinc-500">
                 符合规则套餐
@@ -385,10 +464,12 @@ export default async function Home() {
         <p className="text-sm text-zinc-500">
           {error}
         </p>
-      ) : sorted.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <div>
           <p className="text-sm text-zinc-500">
-            当前没有符合规则的套餐。
+            {activeProvider
+              ? `供应商「${activeProvider}」暂无符合规则的套餐。`
+              : '当前没有符合规则的套餐。'}
           </p>
           {hiddenCount > 0 && (
             <p className="mt-1 text-xs text-zinc-400">
@@ -398,14 +479,14 @@ export default async function Home() {
         </div>
       ) : (
         <div>
-          {hiddenCount > 0 && (
+          {hiddenCount > 0 && !activeProvider && (
             <p className="mb-3 text-xs text-zinc-400">
               已屏蔽 {hiddenCount} 个不符合条件的套餐，仅显示符合规则的
-              {sorted.length} 个
+              {visibleRows.length} 个
             </p>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {sorted.map((plan) => (
+            {visibleRows.map((plan) => (
               <PlanCard
                 key={
                   `${plan.provider_name?.name}-${plan.name}-${plan.location}`
@@ -416,6 +497,7 @@ export default async function Home() {
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }
