@@ -10,6 +10,32 @@ const BROWSER_UA =
  * Detect whether a site is a WHMCS store by fetching its /index.php/store/
  * (or root) and looking for WHMCS markers. Returns the store URL when found.
  */
+/**
+ * Pure detection: does this HTML look like a usable WHMCS store?
+ * Requires `.package` product cards AND a WHMCS link (cart.php /
+ * clientarea.php). A marketing page that only links to cart.php is not
+ * usable for automated monitoring, so we don't accept it.
+ */
+export function isWhmcsStoreHtml(
+  html: string
+): boolean {
+  const $ = loadHtml(html);
+
+  const hasProductCards =
+    $('.package').length > 0;
+
+  const hasWhmcsLink =
+    html.includes('cart.php') ||
+    html.includes('clientarea.php') ||
+    $('a[href*="cart.php"]').length > 0 ||
+    $('a[href*="clientarea.php"]').length >
+      0;
+
+  return (
+    hasProductCards && hasWhmcsLink
+  );
+}
+
 export async function detectWhmcsStore(
   baseUrl: string
 ): Promise<string | null> {
@@ -26,20 +52,7 @@ export async function detectWhmcsStore(
         BROWSER_UA
       );
 
-      const $ = loadHtml(html);
-
-      const isWhmcs =
-        html.includes('cart.php') ||
-        html.includes('clientarea.php') ||
-        html.includes('whmcs') ||
-        $('a[href*="cart.php"]').length >
-          0 ||
-        $('a[href*="clientarea.php"]')
-          .length > 0 ||
-        $('.package, .product').length >
-          0;
-
-      if (isWhmcs) {
+      if (isWhmcsStoreHtml(html)) {
         return url;
       }
     } catch (error) {
