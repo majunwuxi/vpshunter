@@ -83,6 +83,15 @@ export function Sidebar({
           <span>{totalHidden}</span>
         </div>
       </div>
+
+      <div className="mt-4 border-t border-zinc-200 pt-4">
+        <Link
+          href="/candidates"
+          className="text-sm text-zinc-600 hover:underline"
+        >
+          待核验候选 →
+        </Link>
+      </div>
     </aside>
   );
 }

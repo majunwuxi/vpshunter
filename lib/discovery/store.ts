@@ -23,6 +23,11 @@ export interface DiscoveryItem {
   lastActivityAt?: string;
   /** ISO timestamp of the thread's creation (from the detail page). */
   startedAt?: string;
+  /**
+   * Official / product URLs extracted from the thread body. These point to
+   * the provider's site so a candidate can be verified there.
+   */
+  officialUrls?: string[];
 }
 
 export interface ProcessedLead {
@@ -48,7 +53,10 @@ export async function saveDiscoveryItems(
     source_activity_at:
       item.lastActivityAt ?? null,
     source_started_at:
-      item.startedAt ?? null
+      item.startedAt ?? null,
+    official_urls:
+      item.officialUrls ??
+      null
   }));
 
   const { error } =

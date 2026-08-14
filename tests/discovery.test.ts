@@ -4,7 +4,8 @@ import path from 'node:path';
 import { parseLowEndSpiritOffers } from '@/discovery/lowendspirit';
 import {
   parseVanillaOffers,
-  extractStartedAt
+  extractStartedAt,
+  extractOfficialUrls
 } from '@/discovery/vanilla';
 
 const readFixture = (name: string) =>
@@ -213,5 +214,58 @@ describe('extractStartedAt', () => {
     expect(
       extractStartedAt('<html><body>no date</body></html>')
     ).toBeNull();
+  });
+});
+
+describe('extractOfficialUrls', () => {
+  it('extracts provider product links, skips forum/social', () => {
+    const html = `
+      <html>
+        <body>
+          <a href="https://bill.hostdare.com/store/premium-japan-kvm-vps">Store</a>
+          <a href="https://hostdare.com/promo.html">Promo</a>
+          <a href="https://lowendspirit.com/discussion/1/x">Forum</a>
+          <a href="https://twitter.com/hostdare">Social</a>
+          <a href="https://cdn-cgi.foo/abc">CDN</a>
+          <a href="https://discord.gg/abc">Discord</a>
+          <img src="https://example.com/pic.png">
+        </body>
+      </html>
+    `;
+
+    const urls = extractOfficialUrls(html);
+
+    expect(urls).toContain(
+      'https://bill.hostdare.com/store/premium-japan-kvm-vps'
+    );
+    expect(urls).toContain(
+      'https://hostdare.com/promo.html'
+    );
+    expect(urls).not.toContain(
+      'https://lowendspirit.com/discussion/1/x'
+    );
+    expect(urls).not.toContain(
+      'https://twitter.com/hostdare'
+    );
+    expect(urls.length).toBeLessThanOrEqual(
+      5
+    );
+  });
+
+  it('deduplicates same host+path', () => {
+    const html = `
+      <a href="https://a.com/store/x">1</a>
+      <a href="https://a.com/store/x">2</a>
+    `;
+
+    const urls = extractOfficialUrls(html);
+
+    expect(
+      urls.filter(
+        (u) =>
+          u ===
+          'https://a.com/store/x'
+      )
+    ).toHaveLength(1);
   });
 });

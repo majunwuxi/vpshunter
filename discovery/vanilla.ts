@@ -2,7 +2,6 @@ import { fetchHtml, loadHtml } from '@/lib/crawler/fetch';
 import type { CheerioAPI } from 'cheerio';
 import type { Element } from 'domhandler';
 import type { DiscoveryItem } from '@/lib/discovery/store';
-import { logger } from '@/lib/utils/logger';
 
 const PRICE_PATTERN =
   /(?:[$€£])\s*[\d,]+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*(?:USD|EUR|GBP)\b/i;
@@ -21,34 +20,6 @@ export function extractStartedAt(
     );
 
   return match?.[1] ?? null;
-}
-
-/**
- * Fetches a discussion detail page and returns its start (creation) time.
- * Returns null on any failure (item is kept only when we can confirm age).
- */
-async function fetchStartedAt(
-  url: string
-): Promise<string | null> {
-  try {
-    const html =
-      await fetchHtml(url);
-
-    return extractStartedAt(html);
-  } catch (error) {
-    logger.warn(
-      {
-        url,
-        err:
-          error instanceof Error
-            ? error.message
-            : String(error)
-      },
-      'failed to fetch thread start time'
-    );
-
-    return null;
-  }
 }
 
 /**
@@ -179,18 +150,90 @@ export function parseVanillaOffers(
   return items;
 }
 
+const FORUM_DOMAINS =
+  /lowendspirit|lowendtalk|discourse\.org|vanillaforums/i;
+
+const NOISE_DOMAINS =
+  /cdn-cgi|fonts\.|gravatar|google|twitter|^x\.com$|facebook|youtube|instagram|telegram|^t\.me$|discord|github\.com\/vanilla|pinterest|reddit|linkedin/i;
+
 /**
- * Fetches and parses a Vanilla Forums "Offers" category.
- *
- * @param url                the category URL
- * @param source             the discovery source label (e.g. 'lowendtalk')
- * @param maxAgeHours        when set, only items whose last activity is within
- *                           this window are kept (list-page LastCommentDate).
- * @param maxStartedAgeHours when set, each candidate's detail page is fetched
- *                           to read its start (creation) time; only items
- *                           created within this window are kept. Requires one
- *                           extra request per candidate.
+ * Extracts candidate official / product URLs from a thread detail page.
+ * Excludes forum, social, tracking and font domains, and image assets.
  */
+export function extractOfficialUrls(
+  html: string
+): string[] {
+  const $ = loadHtml(html);
+  const seen = new Set<string>();
+  const urls: string[] = [];
+
+  $('a[href]').each((_, el) => {
+    const href =
+      $(el).attr('href') ?? '';
+
+    if (!/^https?:\/\//i.test(href)) {
+      return;
+    }
+
+    let url: URL;
+
+    try {
+      url = new URL(href);
+    } catch {
+      return;
+    }
+
+    const host = url.hostname;
+
+    if (
+      FORUM_DOMAINS.test(host) ||
+      NOISE_DOMAINS.test(host) ||
+      /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(
+        url.pathname
+      ) ||
+      url.pathname.endsWith('.css') ||
+      url.pathname.endsWith('.js')
+    ) {
+      return;
+    }
+
+    const key =
+      host + url.pathname;
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    urls.push(url.toString());
+  });
+
+  return urls.slice(0, 5);
+}
+
+async function fetchThreadMeta(
+  sourceUrl: string
+): Promise<{
+  startedAt: string | null;
+  officialUrls: string[];
+}> {
+  try {
+    const html =
+      await fetchHtml(sourceUrl);
+
+    return {
+      startedAt:
+        extractStartedAt(html),
+      officialUrls:
+        extractOfficialUrls(html)
+    };
+  } catch {
+    return {
+      startedAt: null,
+      officialUrls: []
+    };
+  }
+}
 export async function scanVanillaCategory(
   url: string,
   source: string,
@@ -207,40 +250,43 @@ export async function scanVanillaCategory(
       maxAgeHours
     );
 
-  if (
-    typeof maxStartedAgeHours !== 'number'
-  ) {
-    return candidates;
-  }
-
   const cutoff =
-    Date.now() -
-    maxStartedAgeHours * 60 * 60 * 1000;
+    typeof maxStartedAgeHours === 'number'
+      ? Date.now() -
+        maxStartedAgeHours * 60 * 60 * 1000
+      : 0;
 
   const recent: DiscoveryItem[] = [];
 
   for (const item of candidates) {
-    const startedAt =
-      await fetchStartedAt(
+    const meta =
+      await fetchThreadMeta(
         item.sourceUrl
       );
 
-    if (!startedAt) {
-      continue;
-    }
-
-    const startedMs =
-      Date.parse(startedAt);
-
     if (
-      Number.isFinite(startedMs) &&
-      startedMs >= cutoff
+      cutoff > 0
     ) {
-      recent.push({
-        ...item,
-        startedAt
-      });
+      const startedMs = meta.startedAt
+        ? Date.parse(meta.startedAt)
+        : 0;
+
+      if (
+        !Number.isFinite(startedMs) ||
+        startedMs < cutoff
+      ) {
+        continue;
+      }
     }
+
+    recent.push({
+      ...item,
+      startedAt:
+        meta.startedAt ??
+        item.startedAt,
+      officialUrls:
+        meta.officialUrls
+    });
   }
 
   return recent;

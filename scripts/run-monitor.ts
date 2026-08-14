@@ -275,11 +275,43 @@ async function main() {
               (p) => p.matched
             );
 
+          const monitoredSlugs =
+            new Set(
+              enabledMonitors.map(
+                (m) => m.slug
+              )
+            );
+
+          const covered =
+            matched.filter(
+              (m) =>
+                m.providerSlug &&
+                monitoredSlugs.has(
+                  m.providerSlug
+                )
+            );
+
+          const pending =
+            leads.filter(
+              (l) =>
+                !matched.some(
+                  (m) =>
+                    m.url ===
+                    l.sourceUrl
+                ) &&
+                l.officialUrls &&
+                l.officialUrls.length > 0
+            );
+
           logger.info(
             {
               source: discovery.source,
               total: leads.length,
               matched: matched.length,
+              covered:
+                covered.length,
+              pendingVerification:
+                pending.length,
               providers: [
                 ...new Set(
                   matched.map(
