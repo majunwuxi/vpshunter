@@ -28,6 +28,11 @@ import { sendAlert } from '@/lib/notifications/email';
 import { scanLowEndSpirit } from '@/discovery/lowendspirit';
 import { scanLowEndTalk } from '@/discovery/lowendtalk';
 import { saveDiscoveryItems } from '@/lib/discovery/store';
+import {
+  detectWhmcsStore,
+  buildAutoWhmcsConfig,
+  upsertAutoProvider
+} from '@/lib/discovery/auto-provider';
 import type {
   RawVpsOffer
 } from '@/monitors/types';
@@ -203,6 +208,117 @@ async function processOffer(
   );
 }
 
+/**
+ * Auto-joins providers discovered from forum leads whose official site is a
+ * WHMCS store reachable over HTTP. Only the first official URL per lead is
+ * probed; a lead that matches an existing enabled monitor is skipped.
+ */
+async function autoJoinProviderLeads(
+  leads: Array<import('@/lib/discovery/store').DiscoveryItem>
+): Promise<number> {
+  if (!dbConfigured) {
+    return 0;
+  }
+
+  const monitoredSlugs = new Set(
+    enabledMonitors.map(
+      (m) => m.slug
+    )
+  );
+
+  let joined = 0;
+
+  for (const lead of leads) {
+    // Skip providers we already monitor.
+    const leadSlug = lead.providerName
+      ? lead.providerName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 40)
+      : '';
+
+    if (
+      leadSlug &&
+      monitoredSlugs.has(leadSlug)
+    ) {
+      continue;
+    }
+
+    const official =
+      lead.officialUrls?.[0];
+
+    if (!official) {
+      continue;
+    }
+
+    let baseUrl = official;
+
+    try {
+      const u = new URL(official);
+      baseUrl = u.origin;
+    } catch {
+      continue;
+    }
+
+    try {
+      const storeUrl =
+        await detectWhmcsStore(
+          baseUrl
+        );
+
+      if (!storeUrl) {
+        continue;
+      }
+
+      const name =
+        lead.providerName ||
+        new URL(baseUrl).hostname;
+
+      const config =
+        buildAutoWhmcsConfig(
+          name,
+          baseUrl,
+          storeUrl,
+          lead.sourceUrl
+        );
+
+      const saved =
+        await upsertAutoProvider(
+          config
+        );
+
+      if (saved) {
+        joined += 1;
+
+        logger.info(
+          {
+            provider: saved.name,
+            slug: saved.slug,
+            storeUrl
+          },
+          'auto-joined WHMCS provider'
+        );
+      }
+    } catch (error) {
+      logger.info(
+        {
+          provider:
+            lead.providerName,
+          url: baseUrl,
+          err:
+            error instanceof Error
+              ? error.message
+              : String(error)
+        },
+        'auto-join probe failed'
+      );
+    }
+  }
+
+  return joined;
+}
+
 async function main() {
   const started = new Date();
 
@@ -322,6 +438,21 @@ async function main() {
             },
             'discovery leads saved'
           );
+
+          const joined =
+            await autoJoinProviderLeads(
+              leads
+            );
+
+          if (joined > 0) {
+            logger.info(
+              {
+                source: discovery.source,
+                joined
+              },
+              'auto-joined providers'
+            );
+          }
         } else if (leads.length > 0) {
           logger.info(
             {
@@ -348,8 +479,37 @@ async function main() {
       }
     }
 
+    // Static monitors + auto-discovered WHMCS providers.
+    const allMonitors = [
+      ...enabledMonitors
+    ];
+
+    if (dbConfigured) {
+      const { listAutoProviders, monitorFromAutoProvider } =
+        await import(
+          '@/lib/discovery/auto-provider'
+        );
+
+      const autoRows =
+        await listAutoProviders();
+
+      for (const row of autoRows) {
+        if (
+          !allMonitors.some(
+            (m) => m.slug === row.slug
+          )
+        ) {
+          allMonitors.push(
+            monitorFromAutoProvider(
+              row
+            )
+          );
+        }
+      }
+    }
+
     for (
-      const monitor of enabledMonitors
+      const monitor of allMonitors
     ) {
       try {
         const urls =
