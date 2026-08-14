@@ -161,6 +161,49 @@ export default async function Home() {
     }
   );
 
+  const providerCounts = new Map<
+    string,
+    number
+  >();
+
+  for (const plan of sorted) {
+    const name =
+      plan.provider_name?.name ??
+      'Unknown';
+
+    providerCounts.set(
+      name,
+      (providerCounts.get(name) ??
+        0) + 1
+    );
+  }
+
+  const regionCounts = new Map<
+    string,
+    number
+  >();
+
+  for (const plan of sorted) {
+    const code =
+      plan.location?.slice(0, 2).toUpperCase() ??
+      '??';
+
+    regionCounts.set(
+      code,
+      (regionCounts.get(code) ?? 0) + 1
+    );
+  }
+
+  const cheapest =
+    sorted.length > 0
+      ? sorted.reduce((min, p) =>
+          (p.price_usd_year ?? 0) <
+          (min.price_usd_year ?? 0)
+            ? p
+            : min
+        )
+      : null;
+
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
       <header className="mb-8 flex items-start justify-between">
@@ -245,6 +288,98 @@ export default async function Home() {
           )}
         </div>
       )}
+
+      {session.role !== 'pending' &&
+        !error && (
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded border border-zinc-200 p-4">
+              <div className="text-2xl font-bold">
+                {sorted.length}
+              </div>
+              <div className="text-xs text-zinc-500">
+                符合规则套餐
+              </div>
+            </div>
+            <div className="rounded border border-zinc-200 p-4">
+              <div className="text-2xl font-bold">
+                {hiddenCount}
+              </div>
+              <div className="text-xs text-zinc-500">
+                已屏蔽
+              </div>
+            </div>
+            <div className="rounded border border-zinc-200 p-4">
+              <div className="text-2xl font-bold">
+                {providerCounts.size}
+              </div>
+              <div className="text-xs text-zinc-500">
+                供应商
+              </div>
+            </div>
+            <div className="rounded border border-zinc-200 p-4">
+              <div className="text-2xl font-bold">
+                {cheapest
+                  ? `$${cheapest.price_usd_year}`
+                  : '—'}
+              </div>
+              <div className="text-xs text-zinc-500">
+                最低价/年
+              </div>
+            </div>
+          </div>
+        )}
+
+      {session.role !== 'pending' &&
+        !error &&
+        (providerCounts.size > 0 ||
+          regionCounts.size > 0) && (
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded border border-zinc-200 p-4">
+              <h3 className="mb-2 text-sm font-semibold">
+                按供应商
+              </h3>
+              <div className="flex flex-col gap-1 text-sm">
+                {[
+                  ...providerCounts.entries()
+                ].map(([name, count]) => (
+                  <div
+                    key={name}
+                    className="flex justify-between"
+                  >
+                    <span>
+                      {name}
+                    </span>
+                    <span className="text-zinc-500">
+                      {count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded border border-zinc-200 p-4">
+              <h3 className="mb-2 text-sm font-semibold">
+                按地区
+              </h3>
+              <div className="flex flex-col gap-1 text-sm">
+                {[
+                  ...regionCounts.entries()
+                ].map(([code, count]) => (
+                  <div
+                    key={code}
+                    className="flex justify-between"
+                  >
+                    <span>
+                      {code}
+                    </span>
+                    <span className="text-zinc-500">
+                      {count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
       {error ? (
         <p className="text-sm text-zinc-500">
