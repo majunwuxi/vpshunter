@@ -31,7 +31,8 @@ import { saveDiscoveryItems } from '@/lib/discovery/store';
 import {
   detectWhmcsStore,
   buildAutoWhmcsConfig,
-  upsertAutoProvider
+  upsertAutoProvider,
+  updateAdapterProgress
 } from '@/lib/discovery/auto-provider';
 import type {
   RawVpsOffer
@@ -258,6 +259,13 @@ async function autoJoinProviderLeads(
       lead.officialUrls?.[0];
 
     if (!official) {
+      await updateAdapterProgress({
+        slug: leadSlug || 'unknown',
+        name: lead.providerName || '未知供应商',
+        status: 'discovered',
+        progress: 10,
+        note: '已发现线索，尚未提取到官网 URL'
+      });
       continue;
     }
 
@@ -271,12 +279,29 @@ async function autoJoinProviderLeads(
     }
 
     try {
+      await updateAdapterProgress({
+        slug: leadSlug || new URL(baseUrl).hostname.replace(/[^a-z0-9]+/gi, '-').toLowerCase(),
+        name: lead.providerName || new URL(baseUrl).hostname,
+        status: 'analyzing',
+        progress: 20,
+        officialUrl: baseUrl,
+        note: '正在探测标准 WHMCS 商品页'
+      });
+
       const storeUrl =
         await detectWhmcsStore(
           baseUrl
         );
 
       if (!storeUrl) {
+        await updateAdapterProgress({
+          slug: leadSlug || new URL(baseUrl).hostname.replace(/[^a-z0-9]+/gi, '-').toLowerCase(),
+          name: lead.providerName || new URL(baseUrl).hostname,
+          status: 'analyzing',
+          progress: 20,
+          officialUrl: baseUrl,
+          note: '非标准 WHMCS、Cloudflare 或需要专用 Adapter'
+        });
         continue;
       }
 
@@ -299,6 +324,15 @@ async function autoJoinProviderLeads(
 
       if (saved) {
         joined += 1;
+
+        await updateAdapterProgress({
+          slug: saved.slug,
+          name: saved.name,
+          status: 'enabled',
+          progress: 100,
+          officialUrl: baseUrl,
+          note: '已自动加入 WHMCS 监控'
+        });
 
         logger.info(
           {
@@ -336,6 +370,23 @@ async function main() {
   );
 
   activeRules = await loadRules();
+
+  if (dbConfigured) {
+    for (const monitor of enabledMonitors) {
+      const displayName: Record<string, string> = {
+        bytevirt: 'ByteVirt',
+        hostus: 'HostUS',
+        racknerd: 'RackNerd'
+      };
+      await updateAdapterProgress({
+        slug: monitor.slug,
+        name: displayName[monitor.slug] ?? monitor.slug,
+        status: 'enabled',
+        progress: 100,
+        note: '固定 Provider Adapter 已启用并参与监控'
+      });
+    }
+  }
 
   logger.info(
     {

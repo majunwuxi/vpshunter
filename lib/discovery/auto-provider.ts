@@ -212,6 +212,31 @@ export interface AutoProviderRow {
   enabled: boolean;
 }
 
+export async function updateAdapterProgress(input: {
+  slug: string;
+  name: string;
+  status: 'discovered' | 'analyzing' | 'parser_ready' | 'checkout_testing' | 'enabled' | 'blocked';
+  progress: number;
+  officialUrl?: string;
+  note?: string;
+}) {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+
+  await admin.from('provider_adapter_progress').upsert(
+    {
+      slug: input.slug,
+      name: input.name,
+      status: input.status,
+      progress: input.progress,
+      official_url: input.officialUrl ?? null,
+      note: input.note ?? null,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'slug' }
+  );
+}
+
 /**
  * Upserts an auto-discovered provider and returns it. Uses the source URL
  * as a dedupe hint via the unique slug.
