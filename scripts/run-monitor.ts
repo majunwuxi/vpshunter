@@ -544,7 +544,17 @@ async function main() {
             if (offer.verificationLevel === 'A') {
               stats.checkout = 'passed';
               if (monitor.slug === 'racknerd') stats.cloudflare = 'passed';
-            } else if (stats.checkout === 'not_attempted') {
+            } else if (
+              offer.verificationLevel === 'B' &&
+              stats.checkout === 'not_attempted'
+            ) {
+              // B means the official product/config page was reached, but
+              // Playwright checkout was not attempted for this offer.
+              stats.checkout = 'not_attempted';
+            } else if (
+              offer.verificationLevel === 'C' &&
+              stats.checkout === 'not_attempted'
+            ) {
               stats.checkout = 'failed';
             }
             await processOffer(
@@ -554,6 +564,16 @@ async function main() {
         }
 
         providersChecked += 1;
+        if (stats.verification.A > 0) {
+          stats.checkout = 'passed';
+          if (monitor.slug === 'racknerd') {
+            stats.cloudflare = 'passed';
+          }
+        } else if (stats.verification.B > 0) {
+          stats.checkout = 'not_attempted';
+        } else if (stats.verification.C > 0) {
+          stats.checkout = 'failed';
+        }
         logger.info({ provider: monitor.slug, ...stats }, 'provider monitor summary');
       } catch (error) {
         stats.status = 'failed';
